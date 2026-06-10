@@ -51,12 +51,53 @@ let customExercises = [];
 let currentProgram = 'fullbody';
 let userWorkoutProgram = null;
 let userGlutesProgram = null;
+let userFullBodyPlusProgram = null;
 let editingExerciseIndex = null;
 let currentWorkoutInProgress = null;
 let autosaveTimeout = null;
 
 const AI_PLANS_STORAGE_KEY = 'aiWorkoutPlans';
 const API_WORKOUT_PLAN_URL = '/api/workout-plan';
+const API_USER_STATE_URL = '/api/user-state';
+const CLOUD_SYNC_META_KEY = 'cloudSyncMeta';
+const SYNCED_STORAGE_KEYS = [
+    'selectedWorkoutProgram',
+    'userWorkoutProgram',
+    'userGlutesProgram',
+    'userFullBodyPlusProgram',
+    'currentWorkoutInProgress',
+    'workoutHistory',
+    'customExercises',
+    'aiTrainerData',
+    'lastGeneratedAIPlan',
+    AI_PLANS_STORAGE_KEY
+];
+
+let telegramUserId = null;
+let telegramInitData = '';
+let cloudSyncEnabled = false;
+let cloudSyncReady = false;
+let cloudSyncTimeout = null;
+let cloudSyncInFlight = null;
+let isApplyingRemoteState = false;
+
+const STANDARD_PROGRAMS = {
+    fullbody: {
+        label: '💪 Full Body',
+        storageKey: 'userWorkoutProgram',
+        getDefaultProgram: () => workoutProgram
+    },
+    glutes: {
+        label: '🍑 Ягодицы',
+        storageKey: 'userGlutesProgram',
+        getDefaultProgram: () => glutesProgram
+    },
+    fullbody_plus: {
+        label: '⚙️ Full Body Plus',
+        storageKey: 'userFullBodyPlusProgram',
+        getDefaultProgram: () => fullBodyPlusProgram
+    }
+};
 
 function readStorageJSON(key, fallback) {
     const saved = localStorage.getItem(key);
@@ -66,8 +107,219 @@ function readStorageJSON(key, fallback) {
         return JSON.parse(saved);
     } catch (error) {
         console.warn(`Не удалось прочитать ${key} из localStorage:`, error);
-        localStorage.removeItem(key);
+        removeStorageItem(key);
         return fallback;
+    }
+}
+
+function isSyncedStorageKey(key) {
+    return SYNCED_STORAGE_KEYS.includes(key);
+}
+
+function readCloudSyncMeta() {
+    return readStorageJSON(CLOUD_SYNC_META_KEY, {
+        lastLocalChangeAt: null,
+        lastRemoteSyncAt: null
+    });
+}
+
+function writeCloudSyncMeta(meta) {
+    localStorage.setItem(CLOUD_SYNC_META_KEY, JSON.stringify(meta));
+}
+
+function markLocalStateChanged() {
+    const meta = readCloudSyncMeta();
+    meta.lastLocalChangeAt = new Date().toISOString();
+    writeCloudSyncMeta(meta);
+}
+
+function setStorageItem(key, value) {
+    localStorage.setItem(key, value);
+
+    if (isSyncedStorageKey(key) && !isApplyingRemoteState) {
+        markLocalStateChanged();
+        scheduleCloudSync();
+    }
+}
+
+function removeStorageItem(key) {
+    localStorage.removeItem(key);
+
+    if (isSyncedStorageKey(key) && !isApplyingRemoteState) {
+        markLocalStateChanged();
+        scheduleCloudSync();
+    }
+}
+
+function collectCloudState() {
+    const state = {};
+
+    SYNCED_STORAGE_KEYS.forEach(key => {
+        const rawValue = localStorage.getItem(key);
+        if (rawValue === null) return;
+
+        state[key] = rawValue;
+    });
+
+    return state;
+}
+
+function hasMeaningfulCloudState(state = collectCloudState()) {
+    return Object.values(state).some(value => {
+        if (value == null) return false;
+        if (Array.isArray(value)) return value.length > 0;
+        if (typeof value === 'object') return Object.keys(value).length > 0;
+        return String(value).trim() !== '';
+    });
+}
+
+function applyCloudState(state, updatedAt = new Date().toISOString()) {
+    isApplyingRemoteState = true;
+
+    try {
+        SYNCED_STORAGE_KEYS.forEach(key => {
+            if (Object.prototype.hasOwnProperty.call(state, key)) {
+                localStorage.setItem(key, state[key]);
+            } else {
+                localStorage.removeItem(key);
+            }
+        });
+
+        writeCloudSyncMeta({
+            lastLocalChangeAt: updatedAt,
+            lastRemoteSyncAt: updatedAt
+        });
+    } finally {
+        isApplyingRemoteState = false;
+    }
+}
+
+function getTelegramUserContext() {
+    const safeUser = tg.initDataUnsafe?.user;
+    const safeUserId = safeUser?.id;
+    const initData = tg.initData || '';
+
+    if (safeUserId && initData) {
+        return {
+            userId: String(safeUserId),
+            initData
+        };
+    }
+
+    if (!initData) return null;
+
+    try {
+        const userJson = new URLSearchParams(initData).get('user');
+        if (!userJson) return null;
+
+        const parsedUser = JSON.parse(userJson);
+        if (!parsedUser?.id) return null;
+
+        return {
+            userId: String(parsedUser.id),
+            initData
+        };
+    } catch (error) {
+        console.warn('Не удалось определить Telegram user id для синхронизации:', error);
+        return null;
+    }
+}
+
+async function requestCloudState(state = null) {
+    const response = await fetch(API_USER_STATE_URL, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            initData: telegramInitData,
+            state
+        })
+    });
+
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+        throw new Error(result.error || `Cloud sync error: ${response.status}`);
+    }
+
+    return result;
+}
+
+async function persistCloudState(state = collectCloudState()) {
+    if (!cloudSyncEnabled || !telegramInitData) return null;
+
+    const request = (async () => {
+        const result = await requestCloudState(state);
+        const syncedAt = result.updatedAt || new Date().toISOString();
+
+        writeCloudSyncMeta({
+            lastLocalChangeAt: syncedAt,
+            lastRemoteSyncAt: syncedAt
+        });
+
+        cloudSyncReady = true;
+        return result;
+    })();
+
+    cloudSyncInFlight = request;
+
+    try {
+        return await request;
+    } finally {
+        if (cloudSyncInFlight === request) {
+            cloudSyncInFlight = null;
+        }
+    }
+}
+
+function scheduleCloudSync() {
+    if (!cloudSyncEnabled || isApplyingRemoteState) return;
+
+    if (cloudSyncTimeout) {
+        clearTimeout(cloudSyncTimeout);
+    }
+
+    cloudSyncTimeout = setTimeout(async () => {
+        try {
+            await persistCloudState();
+        } catch (error) {
+            console.error('Ошибка синхронизации с облаком:', error);
+        }
+    }, 800);
+}
+
+async function initializeCloudSync() {
+    const telegramContext = getTelegramUserContext();
+    if (!telegramContext) return;
+
+    telegramUserId = telegramContext.userId;
+    telegramInitData = telegramContext.initData;
+    cloudSyncEnabled = true;
+
+    const localState = collectCloudState();
+    const localMeta = readCloudSyncMeta();
+
+    try {
+        const remoteState = await requestCloudState();
+
+        if (remoteState?.state) {
+            const localTimestamp = Date.parse(localMeta.lastLocalChangeAt || 0) || 0;
+            const remoteTimestamp = Date.parse(remoteState.updatedAt || 0) || 0;
+
+            if (localTimestamp > remoteTimestamp && hasMeaningfulCloudState(localState)) {
+                await persistCloudState(localState);
+            } else {
+                applyCloudState(remoteState.state, remoteState.updatedAt);
+                cloudSyncReady = true;
+            }
+        } else if (hasMeaningfulCloudState(localState)) {
+            await persistCloudState(localState);
+        } else {
+            cloudSyncReady = true;
+        }
+    } catch (error) {
+        console.error('Не удалось инициализировать облачную синхронизацию:', error);
     }
 }
 
@@ -75,8 +327,9 @@ function readStorageJSON(key, fallback) {
 // ИНИЦИАЛИЗАЦИЯ
 // ============================================
 
-function init() {
+async function init() {
     updateDate();
+    await initializeCloudSync();
     loadCustomExercises();
     loadProgram();
     loadUserPrograms();
@@ -128,39 +381,95 @@ function loadProgram() {
 function loadUserPrograms() {
     userWorkoutProgram = readStorageJSON('userWorkoutProgram', null);
     userGlutesProgram = readStorageJSON('userGlutesProgram', null);
+    userFullBodyPlusProgram = readStorageJSON('userFullBodyPlusProgram', null);
+}
+
+function getStoredProgram(programId) {
+    if (programId === 'fullbody') return userWorkoutProgram;
+    if (programId === 'glutes') return userGlutesProgram;
+    if (programId === 'fullbody_plus') return userFullBodyPlusProgram;
+    return null;
+}
+
+function setStoredProgram(programId, value) {
+    if (programId === 'fullbody') userWorkoutProgram = value;
+    if (programId === 'glutes') userGlutesProgram = value;
+    if (programId === 'fullbody_plus') userFullBodyPlusProgram = value;
+}
+
+function getStandardProgramMeta(programId = currentProgram) {
+    return STANDARD_PROGRAMS[programId] || null;
+}
+
+function getProgramDisplayName(programId = currentProgram) {
+    const programMeta = getStandardProgramMeta(programId);
+    return programMeta ? programMeta.label : '🤖 AI план';
+}
+
+function getAvailableProgramDays(programId = currentProgram) {
+    let program = null;
+
+    if (programId?.startsWith('ai_')) {
+        program = userWorkoutProgram;
+    } else {
+        const programMeta = getStandardProgramMeta(programId);
+        if (programMeta) {
+            program = getStoredProgram(programId) || programMeta.getDefaultProgram();
+        }
+    }
+
+    if (!program) return ['A', 'B', 'C'];
+
+    return ['A', 'B', 'C', 'D'].filter(day => Boolean(program[day]));
+}
+
+function updateDayButtonsVisibility(programId = currentProgram) {
+    const availableDays = new Set(getAvailableProgramDays(programId));
+
+    document.querySelectorAll('[data-day]').forEach(button => {
+        button.classList.toggle('hidden', !availableDays.has(button.dataset.day));
+    });
+
+    document.querySelectorAll('[data-edit-day]').forEach(button => {
+        button.classList.toggle('hidden', !availableDays.has(button.dataset.editDay));
+    });
 }
 
 function saveUserProgram() {
-    const program = currentProgram === 'glutes' ? userGlutesProgram : userWorkoutProgram;
-    const key = currentProgram === 'glutes' ? 'userGlutesProgram' : 'userWorkoutProgram';
-    if (program) localStorage.setItem(key, JSON.stringify(program));
+    const programMeta = getStandardProgramMeta();
+    if (!programMeta) return;
+
+    const program = getStoredProgram(currentProgram);
+    if (program) setStorageItem(programMeta.storageKey, JSON.stringify(program));
 }
 
 function getCurrentProgram() {
     if (currentProgram?.startsWith('ai_')) return userWorkoutProgram;
-    if (currentProgram === 'glutes') return userGlutesProgram || glutesProgram;
-    return userWorkoutProgram || workoutProgram;
+
+    const programMeta = getStandardProgramMeta();
+    if (!programMeta) return userWorkoutProgram || workoutProgram;
+
+    return getStoredProgram(currentProgram) || programMeta.getDefaultProgram();
 }
 
 // Создать копию программы если пользователь ещё не редактировал её
 function ensureUserProgram() {
-    if (currentProgram === 'glutes' && !userGlutesProgram) {
-        userGlutesProgram = JSON.parse(JSON.stringify(glutesProgram));
-    } else if (currentProgram === 'fullbody' && !userWorkoutProgram) {
-        userWorkoutProgram = JSON.parse(JSON.stringify(workoutProgram));
+    const programMeta = getStandardProgramMeta();
+    if (!programMeta) return;
+
+    if (!getStoredProgram(currentProgram)) {
+        setStoredProgram(currentProgram, JSON.parse(JSON.stringify(programMeta.getDefaultProgram())));
     }
 }
 
 function resetToDefaultProgram() {
     if (!confirm('Вернуть план к стандартному? Все изменения будут удалены.')) return;
 
-    if (currentProgram === 'glutes') {
-        userGlutesProgram = null;
-        localStorage.removeItem('userGlutesProgram');
-    } else {
-        userWorkoutProgram = null;
-        localStorage.removeItem('userWorkoutProgram');
-    }
+    const programMeta = getStandardProgramMeta();
+    if (!programMeta) return;
+
+    setStoredProgram(currentProgram, null);
+    removeStorageItem(programMeta.storageKey);
 
     loadWorkout(currentDay);
     tg.showAlert('✅ План сброшен к стандартному');
@@ -197,7 +506,7 @@ function saveCurrentWorkoutInProgress() {
     };
 
     try {
-        localStorage.setItem('currentWorkoutInProgress', JSON.stringify(currentWorkoutInProgress));
+        setStorageItem('currentWorkoutInProgress', JSON.stringify(currentWorkoutInProgress));
         showSaveIndicator('saved');
     } catch (e) {
         console.error('Ошибка сохранения:', e);
@@ -213,7 +522,7 @@ function debouncedSave() {
 
 function clearCurrentWorkoutInProgress() {
     currentWorkoutInProgress = null;
-    localStorage.removeItem('currentWorkoutInProgress');
+    removeStorageItem('currentWorkoutInProgress');
 }
 
 function escapeHTML(value) {
@@ -529,19 +838,19 @@ function loadWorkoutProgramSelection() {
 }
 
 function selectWorkoutProgram(programId) {
-    localStorage.setItem('selectedWorkoutProgram', programId);
+    setStorageItem('selectedWorkoutProgram', programId);
 
-    if (programId === 'fullbody' || programId === 'glutes') {
+    if (getStandardProgramMeta(programId)) {
         currentProgram = programId;
 
         document.getElementById('workoutProgramSelection').classList.add('hidden');
         document.getElementById('workoutDaySelection').classList.remove('hidden');
 
-        document.getElementById('currentProgramName').textContent =
-            programId === 'fullbody' ? '💪 Full Body' : '🍑 Ягодицы';
+        document.getElementById('currentProgramName').textContent = getProgramDisplayName(programId);
 
         updateDate();
         updateProgramButtons();
+        updateDayButtonsVisibility(programId);
 
         const today = new Date().toISOString().split('T')[0];
         if (
@@ -576,13 +885,14 @@ function loadAIPlanAsProgram(planId) {
     document.getElementById('currentProgramName').textContent = `🤖 ${plan.name.replace('AI План - ', '')}`;
 
     updateDate();
+    updateDayButtonsVisibility(planId);
     selectDay('A');
 }
 
 function deleteAIPlan(planId) {
     let aiPlans = readStorageJSON(AI_PLANS_STORAGE_KEY, []);
     aiPlans = aiPlans.filter(p => p.id !== planId);
-    localStorage.setItem(AI_PLANS_STORAGE_KEY, JSON.stringify(aiPlans));
+    setStorageItem(AI_PLANS_STORAGE_KEY, JSON.stringify(aiPlans));
     loadWorkoutProgramSelection();
     tg.showAlert('✅ План удалён');
 }
@@ -593,12 +903,9 @@ function backToProgramSelection() {
 }
 
 function updateProgramButtons() {
-    const fullbodyBtn = document.getElementById('fullbodyBtn');
-    const glutesBtn = document.getElementById('glutesBtn');
-    if (!fullbodyBtn || !glutesBtn) return;
-
-    fullbodyBtn.classList.toggle('active', currentProgram === 'fullbody');
-    glutesBtn.classList.toggle('active', currentProgram !== 'fullbody');
+    document.querySelectorAll('[data-program-card]').forEach(card => {
+        card.classList.toggle('active', card.dataset.programCard === currentProgram);
+    });
 }
 
 // ============================================
@@ -616,7 +923,11 @@ function selectDay(day) {
 }
 
 function loadWorkout(day) {
-    if (typeof workoutProgram === 'undefined' || typeof glutesProgram === 'undefined') {
+    if (
+        typeof workoutProgram === 'undefined' ||
+        typeof glutesProgram === 'undefined' ||
+        typeof fullBodyPlusProgram === 'undefined'
+    ) {
         console.error('Программы тренировок не загружены!');
         document.getElementById('exercisesList').innerHTML =
             '<div class="card-modern text-center p-4"><p class="text-red-500">Ошибка загрузки программ. Обнови страницу.</p></div>';
@@ -821,7 +1132,7 @@ function completeWorkout() {
         history.unshift(workoutRecord);
     }
 
-    localStorage.setItem('workoutHistory', JSON.stringify(history));
+    setStorageItem('workoutHistory', JSON.stringify(history));
 
     clearCurrentWorkoutInProgress();
     currentWorkoutData = {};
@@ -929,23 +1240,26 @@ function updateAfterEdit() {
 // ============================================
 
 function loadMyPlanPage() {
+    if (!getStandardProgramMeta(currentProgram)) {
+        currentProgram = 'fullbody';
+    }
+
     updateProgramButtonsForEdit();
+    updateDayButtonsVisibility();
     selectDayForEdit('A');
 }
 
 function switchProgramForEdit(program) {
     currentProgram = program;
     updateProgramButtonsForEdit();
+    updateDayButtonsVisibility(program);
     selectDayForEdit('A');
 }
 
 function updateProgramButtonsForEdit() {
-    const fullbodyBtn = document.getElementById('editFullbodyBtn');
-    const glutesBtn = document.getElementById('editGlutesBtn');
-    if (!fullbodyBtn || !glutesBtn) return;
-
-    fullbodyBtn.classList.toggle('active', currentProgram === 'fullbody');
-    glutesBtn.classList.toggle('active', currentProgram !== 'fullbody');
+    document.querySelectorAll('[data-edit-program]').forEach(button => {
+        button.classList.toggle('active', button.dataset.editProgram === currentProgram);
+    });
 }
 
 function selectDayForEdit(day) {
@@ -1123,7 +1437,7 @@ function loadCustomExercises() {
 }
 
 function saveCustomExercises() {
-    localStorage.setItem('customExercises', JSON.stringify(customExercises));
+    setStorageItem('customExercises', JSON.stringify(customExercises));
 }
 
 // ============================================
@@ -1193,7 +1507,7 @@ function loadHistory() {
                     <div>
                         <div class="flex items-center gap-2 mb-1">
                             <span class="chip">
-                                ${record.program === 'fullbody' ? '💪 Full Body' : '🍑 Ягодицы'}
+                                ${escapeHTML(getProgramDisplayName(record.program))}
                             </span>
                         </div>
                         <h3 class="text-lg font-bold">${record.dayName}</h3>
@@ -1265,7 +1579,7 @@ function deleteHistoryWorkout(recordIndex) {
 
     history.splice(recordIndex, 1);
 
-    localStorage.setItem(
+    setStorageItem(
         'workoutHistory',
         JSON.stringify(history)
     );
@@ -1355,7 +1669,7 @@ function deleteExerciseFromHistory(recordIndex, exerciseId) {
         closeEditHistoryModal();
     }
 
-    localStorage.setItem(
+    setStorageItem(
         'workoutHistory',
         JSON.stringify(history)
     );
@@ -1382,7 +1696,7 @@ function saveHistoryEdit() {
     });
 
     history[recordIndex] = record;
-    localStorage.setItem('workoutHistory', JSON.stringify(history));
+    setStorageItem('workoutHistory', JSON.stringify(history));
 
     closeEditHistoryModal();
     loadHistory();
@@ -1895,7 +2209,7 @@ async function generateAIPlan() {
         return;
     }
 
-    localStorage.setItem('aiTrainerData', JSON.stringify({
+    setStorageItem('aiTrainerData', JSON.stringify({
         gender, age, weight, height, experience, goal, equipment, preferredExercises, focusAreas
     }));
 
@@ -1917,14 +2231,14 @@ async function generateAIPlan() {
 
         if (data.isText) {
             document.getElementById('aiPlanContent').textContent = data.plan;
-            localStorage.setItem('lastGeneratedAIPlan', JSON.stringify({
+            setStorageItem('lastGeneratedAIPlan', JSON.stringify({
                 plan: data.plan, isText: true,
                 userData: { gender, age, weight, height, experience, goal, equipment, preferredExercises, focusAreas },
                 timestamp: new Date().toISOString()
             }));
         } else {
             document.getElementById('aiPlanContent').textContent = formatPlanAsText(data.plan);
-            localStorage.setItem('lastGeneratedAIPlan', JSON.stringify({
+            setStorageItem('lastGeneratedAIPlan', JSON.stringify({
                 plan: data.plan, isText: false,
                 userData: { gender, age, weight, height, experience, goal, equipment, preferredExercises, focusAreas },
                 timestamp: new Date().toISOString()
@@ -1994,7 +2308,7 @@ function saveAIPlanToWorkouts() {
     };
 
     aiPlans.push(newPlan);
-    localStorage.setItem(AI_PLANS_STORAGE_KEY, JSON.stringify(aiPlans));
+    setStorageItem(AI_PLANS_STORAGE_KEY, JSON.stringify(aiPlans));
     tg.showAlert('✅ План добавлен в Тренировки!');
 }
 

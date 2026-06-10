@@ -240,6 +240,282 @@ const workoutProgram = {
     }
 };
 
+// Full Body программа с акцентом на тренажёры и объём
+const fullBodyPlusProgram = {
+    A: {
+        name: "Full Body A — силовой акцент",
+        emoji: "🔥",
+        exercises: [
+            {
+                id: "fb_plus_bench_press",
+                name: "Жим штанги лёжа",
+                emoji: "💪",
+                sets: 3,
+                reps: "6-10",
+                technique: "Главный жим недели. Лопатки сведены, стопы упираются в пол, штанга идёт к середине груди.",
+                youtubeUrl: "https://www.youtube.com/watch?v=rT7DgCr-3pg",
+                muscleGroups: "Грудь, трицепс, передние дельты"
+            },
+            {
+                id: "fb_plus_leg_press_a",
+                name: "Жим ногами",
+                emoji: "🦵",
+                sets: 3,
+                reps: "8-12",
+                technique: "Не отрывай таз, поясница и ягодицы прижаты. Выжимай платформу пятками без рывков.",
+                youtubeUrl: "https://www.youtube.com/watch?v=IZxyjW7MPJQ",
+                muscleGroups: "Квадрицепсы, ягодицы, приводящие"
+            },
+            {
+                id: "fb_plus_lat_pulldown",
+                name: "Тяга вертикального блока к груди",
+                emoji: "🎯",
+                sets: 3,
+                reps: "8-12",
+                technique: "Тяни локтями вниз, а не кистями. Внизу мягко своди лопатки и контролируй возврат.",
+                youtubeUrl: "https://www.youtube.com/watch?v=eGo4IYlbE5g",
+                muscleGroups: "Широчайшие спины, бицепс"
+            },
+            {
+                id: "fb_plus_leg_curl_a",
+                name: "Сгибание ног лёжа",
+                emoji: "🔄",
+                sets: 3,
+                reps: "10-15",
+                technique: "Контроль по всей амплитуде, без рывков. В верхней точке можно коротко зафиксировать сокращение.",
+                youtubeUrl: "https://www.youtube.com/watch?v=1Tq3QdYUuHs",
+                muscleGroups: "Бицепс бедра"
+            },
+            {
+                id: "fb_plus_lateral_raise",
+                name: "Махи в стороны",
+                emoji: "🏋️",
+                sets: 3,
+                reps: "12-20",
+                technique: "Лучше легче, но чище. Поднимай через стороны без раскачки корпуса.",
+                youtubeUrl: "https://www.youtube.com/watch?v=3VcKaXpzqRo",
+                muscleGroups: "Средние дельты"
+            },
+            {
+                id: "fb_plus_tricep_pushdown",
+                name: "Разгибание на трицепс в блоке",
+                emoji: "⚡",
+                sets: 2,
+                reps: "10-15",
+                technique: "Без залома кистей. Локти держи рядом с корпусом и разгибай руки до конца.",
+                youtubeUrl: "https://www.youtube.com/watch?v=2-LAMcpzODU",
+                muscleGroups: "Трицепс"
+            },
+            {
+                id: "fb_plus_cable_crunch",
+                name: "Скручивания на блоке",
+                emoji: "🧘",
+                sets: 3,
+                reps: "10-15",
+                technique: "Рёбра тяни к тазу, а не просто опускай руки. Держи пресс в постоянном напряжении.",
+                muscleGroups: "Прямая мышца живота"
+            }
+        ]
+    },
+    B: {
+        name: "Full Body B — спина/ноги/грудь в тренажёрах",
+        emoji: "🎯",
+        exercises: [
+            {
+                id: "fb_plus_chest_supported_row",
+                name: "Тяга с упором грудью",
+                emoji: "🎯",
+                sets: 3,
+                reps: "8-12",
+                technique: "Главный акцент на спину. Не дёргай корпусом, тяни локти назад и своди лопатки.",
+                muscleGroups: "Широчайшие, ромбовидные, задние дельты"
+            },
+            {
+                id: "fb_plus_leg_extension",
+                name: "Разгибание ног",
+                emoji: "⚡",
+                sets: 3,
+                reps: "10-15",
+                technique: "В верхней точке сделай паузу 1 секунду. Опускай вес плавно и не бросай.",
+                youtubeUrl: "https://www.youtube.com/watch?v=YyvSfVjQeL0",
+                muscleGroups: "Квадрицепсы"
+            },
+            {
+                id: "fb_plus_hammer_press",
+                name: "Жим в хаммере от груди",
+                emoji: "💪",
+                sets: 3,
+                reps: "8-12",
+                technique: "Жми без боли в кистях, подбери удобную ширину хвата и не выворачивай запястья.",
+                youtubeUrl: "https://www.youtube.com/watch?v=xUm0BiZCWlQ",
+                muscleGroups: "Грудь, трицепс, передние дельты"
+            },
+            {
+                id: "fb_plus_hyperextension",
+                name: "Гиперэкстензия",
+                emoji: "🔄",
+                sets: 3,
+                reps: "12-15",
+                technique: "Работай ягодицами и спиной, но не ломай поясницу. Поднимайся до прямой линии корпуса.",
+                youtubeUrl: "https://www.youtube.com/watch?v=ph3pddpKzzw",
+                muscleGroups: "Разгибатели спины, ягодицы, бицепс бедра"
+            },
+            {
+                id: "fb_plus_pec_deck",
+                name: "Pec Deck",
+                emoji: "🏋️",
+                sets: 2,
+                reps: "10-15",
+                technique: "Контроль без глубокого провала. Своди руки перед собой и мягко растягивай грудь на возврате.",
+                youtubeUrl: "https://www.youtube.com/watch?v=Z57CtFmRMxA",
+                muscleGroups: "Грудь"
+            },
+            {
+                id: "fb_plus_rope_hammer_curl",
+                name: "Молотковые сгибания с канатом",
+                emoji: "🔨",
+                sets: 3,
+                reps: "10-15",
+                technique: "Хорошо для кистей: запястья нейтральные, локти у корпуса, движение без раскачки.",
+                muscleGroups: "Бицепс, брахиалис, предплечья"
+            },
+            {
+                id: "fb_plus_pallof_press",
+                name: "Pallof press в кроссовере",
+                emoji: "🧘",
+                sets: 3,
+                reps: "10-12 на сторону",
+                technique: "Анти-ротация для кора: корпус неподвижен, таз стабилен, выжимай рукоять строго перед собой.",
+                muscleGroups: "Кор, косые мышцы живота"
+            }
+        ]
+    },
+    C: {
+        name: "Full Body C — объёмный акцент",
+        emoji: "✨",
+        exercises: [
+            {
+                id: "fb_plus_leg_press_c",
+                name: "Жим ногами",
+                emoji: "🦵",
+                sets: 3,
+                reps: "10-15",
+                technique: "Чуть легче, чем в дне A. Спина прижата, движение плавное, без отбива внизу.",
+                youtubeUrl: "https://www.youtube.com/watch?v=IZxyjW7MPJQ",
+                muscleGroups: "Квадрицепсы, ягодицы, приводящие"
+            },
+            {
+                id: "fb_plus_seated_row",
+                name: "Тяга горизонтального блока",
+                emoji: "🎯",
+                sets: 3,
+                reps: "8-12",
+                technique: "Сделай паузу в сведении лопаток. Не отклоняйся назад сильнее, чем нужно для контроля.",
+                youtubeUrl: "https://www.youtube.com/watch?v=UCXxvVItLoM",
+                muscleGroups: "Широчайшие, ромбовидные, задние дельты"
+            },
+            {
+                id: "fb_plus_machine_chest_press",
+                name: "Жим в хаммере / тренажёре",
+                emoji: "💪",
+                sets: 3,
+                reps: "10-12",
+                technique: "Не штанга: здесь нужен ровный объёмный жим с комфортной траекторией и полным контролем.",
+                youtubeUrl: "https://www.youtube.com/watch?v=xUm0BiZCWlQ",
+                muscleGroups: "Грудь, трицепс"
+            },
+            {
+                id: "fb_plus_leg_curl_c",
+                name: "Сгибание ног лёжа",
+                emoji: "🔄",
+                sets: 2,
+                reps: "12-15",
+                technique: "Медленно вниз, без потери натяжения. Вверх поднимай только за счёт задней поверхности бедра.",
+                youtubeUrl: "https://www.youtube.com/watch?v=1Tq3QdYUuHs",
+                muscleGroups: "Бицепс бедра"
+            },
+            {
+                id: "fb_plus_reverse_pec_deck",
+                name: "Обратный Pec Deck",
+                emoji: "🏋️",
+                sets: 3,
+                reps: "12-20",
+                technique: "Работай задней дельтой и осанкой, не поднимай плечи к ушам.",
+                muscleGroups: "Задние дельты, верх спины"
+            },
+            {
+                id: "fb_plus_calf_raise",
+                name: "Икры в тренажёре",
+                emoji: "🦿",
+                sets: 3,
+                reps: "12-15",
+                technique: "Полная амплитуда: высокая фиксация наверху и хорошее растяжение внизу.",
+                youtubeUrl: "https://www.youtube.com/watch?v=gwLzBJYoWlI",
+                muscleGroups: "Икроножные мышцы"
+            },
+            {
+                id: "fb_plus_dead_bug",
+                name: "Dead bug",
+                emoji: "🧘",
+                sets: 3,
+                reps: "8-10 на сторону",
+                technique: "Поясница прижата к полу. Двигай руками и ногами медленно, не теряя контроля корпуса.",
+                muscleGroups: "Кор, пресс, стабилизаторы"
+            }
+        ]
+    },
+    D: {
+        name: "Опциональный 4-й день — не силовой",
+        emoji: "🚶",
+        exercises: [
+            {
+                id: "fb_plus_incline_walk",
+                name: "Прогулка или дорожка под наклоном",
+                emoji: "🚶",
+                sets: 1,
+                reps: "30-45 мин",
+                technique: "Это не ещё одна силовая тренировка. Иди в умеренном темпе 30-45 минут, чтобы разгрузить голову, спину и накопленную усталость."
+            },
+            {
+                id: "fb_plus_plank",
+                name: "Планка",
+                emoji: "🧘",
+                sets: 3,
+                reps: "30-45 сек",
+                technique: "Держи корпус прямым, не проваливай поясницу и не задирай таз.",
+                muscleGroups: "Кор, пресс"
+            },
+            {
+                id: "fb_plus_bird_dog",
+                name: "Bird dog",
+                emoji: "🎯",
+                sets: 3,
+                reps: "8-10 на сторону",
+                technique: "Тянись рукой и ногой в разные стороны, поясница нейтральна, движение медленное и подконтрольное.",
+                muscleGroups: "Кор, разгибатели спины, ягодицы"
+            },
+            {
+                id: "fb_plus_face_pull_light",
+                name: "Face pull легко",
+                emoji: "🏋️",
+                sets: 2,
+                reps: "15-20",
+                technique: "Лёгкий вес, локти высоко, лопатки своди мягко. Цель не убиться, а разгрузить плечевой пояс.",
+                muscleGroups: "Задние дельты, верх спины"
+            },
+            {
+                id: "fb_plus_mobility",
+                name: "Растяжка грудных и сгибателей бедра",
+                emoji: "✨",
+                sets: 1,
+                reps: "5-7 мин",
+                technique: "Спокойная растяжка в конце. Если усталость высокая, можно оставить только прогулку.",
+                muscleGroups: "Мобилизация и восстановление"
+            }
+        ]
+    }
+};
+
 // Программа для ягодиц и ног
 const glutesProgram = {
     A: {
